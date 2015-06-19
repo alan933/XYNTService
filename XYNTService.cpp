@@ -7,6 +7,8 @@
 #include <winbase.h>
 #include <winsvc.h>
 #include <process.h>
+#include <iostream>
+#include <string>
 
 
 const int nBufferSize = 500;
@@ -165,6 +167,32 @@ void EndProcess(int nIndex)
 		pProcInfo[nIndex].hProcess = 0;
 		pProcInfo[nIndex].hThread = 0;
 	}
+}
+////////////////////////////////////////////////////////////////////// 
+//
+// This is used to kill the extra process beside the process invoked by CommandLine
+// you can configure it in ini file with "ExtraProcess=xx.exe,yy.exe"
+//
+void EndExtraProcess(int nIndex) 
+{
+	char pItem[nBufferSize+1];
+	sprintf(pItem,"Process%d\0",nIndex);
+	char pExtraProcess[nBufferSize+1];
+	GetPrivateProfileString(pItem,"ExtraProcess","",pExtraProcess,nBufferSize,pInitFile);
+	if(strlen(pExtraProcess)==0)
+		return;
+	const char* splitStr = ",";
+	char* p=strtok(pExtraProcess,splitStr);	
+    while(p)
+    {
+		char pKillCmd[nBufferSize+1];
+		sprintf(pKillCmd,"taskkill /F /IM %s\0",p);
+		char pLogKillInfo[121];
+		sprintf(pLogKillInfo, "start to kill the process %s", p);
+		WriteLog(pLogKillInfo);
+		::WinExec(pKillCmd,SW_HIDE);
+        p = std::strtok(NULL,splitStr);
+    }
 }
 
 BOOL BounceProcess(char* pName, int nIndex) 
@@ -375,6 +403,9 @@ VOID WINAPI XYNTServiceHandler(DWORD fdwControl)
 				for(int i=nMaxProcCount-1;i>=0;i--)
 				{
 					EndProcess(i);
+					// we need to do extra process killing
+					// because process may be invoked by chains
+					EndExtraProcess(i);
 				}			
 				if (!SetServiceStatus(hServiceStatusHandle, &serviceStatus))
 				{ 
@@ -384,6 +415,7 @@ VOID WINAPI XYNTServiceHandler(DWORD fdwControl)
 					WriteLog(pTemp);
 				}
 			}
+
 			return; 
 		case SERVICE_CONTROL_PAUSE:
 			serviceStatus.dwCurrentState = SERVICE_PAUSED; 
